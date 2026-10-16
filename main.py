@@ -27,7 +27,13 @@ class QuadroHorasNav:
         }
 
         self.traducao_dias = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
-        
+        self.traducao_meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+                               "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+        # Dados da semana exibida (carregados do Redmine em carregar_dados)
+        self.working_week_tasks = {}
+        self.month_hours = None
+
         # Rastreamento de tarefas em andamento
         self.time_label_ref = None
         self.counted_time_label_ref = None
@@ -47,7 +53,40 @@ class QuadroHorasNav:
     def navegar_semana(self, semanas):
         """Navega para frente ou para trás no tempo."""
         self.segunda_da_semana += timedelta(weeks=semanas)
+        self.carregar_dados()
+
+    def carregar_dados(self, force=False):
+        """Consulta a semana exibida e o total do mês no Redmine e redesenha o quadro.
+        Sem conexão, usa o cache local e avisa no cabeçalho."""
+        inicio = self.segunda_da_semana
+        fim = self.segunda_da_semana + timedelta(days=7)
+        self.root.config(cursor="watch")
+        self.root.update_idletasks()
+        try:
+            self.working_week_tasks = self.red_manager.get_working_week(inicio, fim, force=force)
+            self.month_hours = self.red_manager.get_month_hours(self.hoje_real)
+            self.lbl_aviso.config(text="")
+        except Exception as e:
+            print(f"Falha ao consultar o Redmine: {type(e).__name__}: {e}")
+            self.working_week_tasks = self.red_manager.get_cached_week(inicio, fim)
+            self.lbl_aviso.config(text="⚠ Sem conexão com o Redmine: exibindo dados do cache")
+        finally:
+            self.root.config(cursor="")
+
+        self.atualizar_cabecalho()
         self.atualizar_quadro()
+
+    def atualizar_cabecalho(self):
+        """Atualiza nome do usuário e total de horas do mês."""
+        self.lbl_usuario.config(text=f"👤 {self.red_manager.get_user_name()}")
+        nome_mes = f"{self.traducao_meses[self.hoje_real.month - 1]}/{self.hoje_real.year}"
+        total_mes = "—" if self.month_hours is None else self.formatar_horas(self.month_hours)
+        self.lbl_total_mes.config(text=f"Horas em {nome_mes}: {total_mes}")
+
+    def formatar_horas(self, horas):
+        """Formata horas decimais como HH:MM (ex.: 1.5 -> 01:30)."""
+        minutos = round(horas * 60)
+        return f"{minutos // 60:02d}:{minutos % 60:02d}"
     
     def start_working_task(self, task_id):
         """Inicia o rastreamento de uma tarefa. Se houver tarefa em andamento, pausa primeiro."""
@@ -136,7 +175,8 @@ class QuadroHorasNav:
             result["activity_id"]
         )
         self.stop_current_working_task(task_id)
-        self.atualizar_quadro()
+        # Recarrega do Redmine para refletir o lançamento no quadro e no total do mês
+        self.carregar_dados()
     
     def _minimize_to_tray(self):
         """Minimiza a janela para a bandeja."""
@@ -244,16 +284,61 @@ class QuadroHorasNav:
                                  bg="#555", fg="white", relief="flat", padx=10)
         btn_minimize.pack(side="right", padx=5)
 
-        # --- CONTAINER DA TABELA ---
-        self.table_container = tk.Frame(self.root, bg="#f5f5f5")
-        self.table_container.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        self.atualizar_quadro()
+        # --- BARRA DE INFORMAÇÕES (usuário, total do mês, atualizar) ---
+        self.info_frame = tk.Frame(self.root, bg="#444", pady=4)
+        self.info_frame.pack(fill="x")
+
+        self.lbl_usuario = tk.Label(self.info_frame, text="", font=("Segoe UI", 9, "bold"), bg="#444", fg="white")
+        self.lbl_usuario.pack(side="left", padx=20)
+
+        self.lbl_total_mes = tk.Label(self.info_frame, text="", font=("Segoe UI", 9), bg="#444", fg="white")
+        self.lbl_total_mes.pack(side="left", padx=10)
+
+        btn_refresh = tk.Button(self.info_frame, text="⟳ Atualizar", command=self.atualizar_do_redmine,
+                                bg="#555", fg="white", relief="flat", padx=10)
+        btn_refresh.pack(side="right", padx=20)
+
+        self.lbl_aviso = tk.Label(self.info_frame, text="", font=("Segoe UI", 9, "bold"), bg="#444", fg="#ffc107")
+        self.lbl_aviso.pack(side="right", padx=10)
+
+        # --- CONTAINER DA TABELA (com barra de rolagem vertical) ---
+        scroll_frame = tk.Frame(self.root, bg="#f5f5f5")
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.canvas = tk.Canvas(scroll_frame, bg="#f5f5f5", highlightthickness=0)
+        scrollbar = tk.Scrollbar(scroll_frame, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.table_container = tk.Frame(self.canvas, bg="#f5f5f5")
+        self.canvas.create_window((0, 0), window=self.table_container, anchor="nw")
+        self.table_container.bind(
+            "<Configure>",
+            lambda event: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        # Roda do mouse só enquanto o ponteiro está sobre a tabela
+        self.canvas.bind("<Enter>", lambda event: self.canvas.bind_all("<MouseWheel>", self._on_mousewheel))
+        self.canvas.bind("<Leave>", lambda event: self.canvas.unbind_all("<MouseWheel>"))
+
+        self.carregar_dados()
+
+    def _on_mousewheel(self, event):
+        # Só rola se o conteúdo for maior que a área visível
+        if self.table_container.winfo_height() > self.canvas.winfo_height():
+            self.canvas.yview_scroll(int(-event.delta / 120), "units")
+
+    def atualizar_do_redmine(self):
+        """Botão Atualizar: força nova consulta ao Redmine, ignorando o cache."""
+        self.carregar_dados(force=True)
 
     def atualizar_quadro(self):
         # Limpa a tabela atual para redesenhar
         for widget in self.table_container.winfo_children():
             widget.destroy()
+        # As labels antigas foram destruídas; são recriadas abaixo se a tarefa em andamento estiver na semana
+        self.time_label_ref = None
+        self.counted_time_label_ref = None
 
         domingo = self.segunda_da_semana + timedelta(days=6)
         self.lbl_periodo.config(text=f"Período: {self.segunda_da_semana.strftime('%d/%m')} até {domingo.strftime('%d/%m/%Y')}")
@@ -275,14 +360,30 @@ class QuadroHorasNav:
                            bg=cor_bg, fg=cor_fg, borderwidth=1, relief="solid", width=12, pady=5)
             lbl.grid(row=0, column=i+1, sticky="nsew")
 
-        working_week_tasks = self.red_manager.get_working_week(self.segunda_da_semana, self.segunda_da_semana + timedelta(days=7))
-        self.red_manager.save_to_file()
+        working_week_tasks = self.working_week_tasks
         index = 1
         for t, working_days in working_week_tasks.items():
             task = self.red_manager.get_task_by_id(t)
             print(t, working_days)
             self.renderizar_linha_tarefa(index, task, working_days)
             index += 1
+        self.red_manager.save_to_file()
+
+        self.renderizar_linha_totais(index, working_week_tasks)
+
+    def renderizar_linha_totais(self, row, working_week_tasks):
+        """Linha final com o total de horas registradas no Redmine em cada dia."""
+        tk.Label(self.table_container, text="Total do dia", font=("Segoe UI", 9, "bold"),
+                 bg="#e0e0e0", borderwidth=1, relief="solid", anchor="w", padx=8, pady=4
+                 ).grid(row=row, column=0, sticky="nsew")
+
+        for i in range(7):
+            data_str = str(self.segunda_da_semana + timedelta(days=i))
+            total = sum(working_days.get(data_str, 0) for working_days in working_week_tasks.values())
+            is_hoje = (self.segunda_da_semana + timedelta(days=i)) == self.hoje_real
+            tk.Label(self.table_container, text=self.formatar_horas(total), font=("Segoe UI", 10, "bold"),
+                     bg="#e3f2fd" if is_hoje else "#e0e0e0", borderwidth=1, relief="solid", pady=4
+                     ).grid(row=row, column=i+1, sticky="nsew")
 
     def renderizar_linha_tarefa(self, row, info, horas_tarefas):
         # --- Painel Lateral (ID, Descrição, Status) ---

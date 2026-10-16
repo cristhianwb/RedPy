@@ -1,0 +1,11 @@
+# Padrão de fim de linha do repositório: LF, independente do core.autocrlf de cada máquina
+* text=auto eol=lf
+
+# Scripts do Windows precisam de CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binários
+*.ico binary
+*.exe binary
+*.pkl binary

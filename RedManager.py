@@ -1,6 +1,6 @@
 from redminelib import Redmine
 from redminelib.resources import User
-from datetime import date
+from datetime import date, timedelta
 import pickle
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -37,7 +37,8 @@ class RedManager:
         if self.week_cache is None: self.week_cache = {} 
         if self.current_working_tasks is None: self.current_working_tasks = {}
         if self.me is None: self.me = self.redmine.user.get('current')
-        self.updated_today = False
+        # Semanas já consultadas no Redmine nesta execução do app
+        self.weeks_updated = set()
 
     def load_from_file(self):
         try:
@@ -77,40 +78,70 @@ class RedManager:
         if self.tasks_by_id.get(task_id):
             print("Retornando tarefa do cache")
             return self.tasks_by_id.get(task_id)
-        print("Consultando tarefa...")         
-        red_task = None
-        for red_task in self.redmine.issue.filter(issue_id=task_id):
-            pass
-        if red_task is not None:
-            task = {
-                    "id" : red_task.id,
-                    "desc": str(red_task.subject)[:150],
-                    "status" : str(red_task.status)
-                }
-            self.tasks_by_id[task_id] = task
-            return task
+        print("Consultando tarefa...")
+        self.refresh_tasks([task_id])
+        if self.tasks_by_id.get(task_id):
+            return self.tasks_by_id.get(task_id)
         task = {
                     "id" : task_id,
                     "desc": "tarefa não encontrada",
                     "status" : "desconhecido"
                 }
         return task
-        
+
+    def refresh_tasks(self, task_ids):
+        """Consulta as tarefas no Redmine em uma única chamada e atualiza o cache (descrição e status)."""
+        if not task_ids:
+            return
+        # status_id='*' para trazer também tarefas fechadas (o padrão do Redmine é só abertas)
+        issues = self.redmine.issue.filter(
+            issue_id=",".join(str(task_id) for task_id in task_ids),
+            status_id='*'
+        )
+        for red_task in issues:
+            self.tasks_by_id[red_task.id] = {
+                "id": red_task.id,
+                "desc": str(red_task.subject)[:150],
+                "status": str(red_task.status)
+            }
+
+    def get_user_name(self):
+        """Retorna o nome do usuário logado no Redmine."""
+        try:
+            return f"{self.me.firstname} {self.me.lastname}".strip()
+        except AttributeError:
+            return str(getattr(self.me, 'login', ''))
+
+    def get_month_hours(self, day):
+        """Retorna o total de horas lançadas pelo usuário no mês da data informada."""
+        first_day = day.replace(day=1)
+        last_day = (first_day + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        time_entries = self.redmine.time_entry.filter(
+            user_id=self.me.id,
+            from_date=first_day,
+            to_date=last_day
+        )
+        return sum(self.get_round_time(te.hours) for te in time_entries)
+
+    def get_cached_week(self, start_date, end_date):
+        """Retorna a semana do cache local, sem consultar o Redmine."""
+        return self.week_cache.get(str(start_date)+'-'+str(end_date), {})
+
     def get_round_time(self, hours):
         h = round(hours * 60)
         return h / 60.0
 
-    def get_working_week(self, start_date, end_date):
-        
+    def get_working_week(self, start_date, end_date, force=False):
+
         #self.update_working_task()
 
-        week = self.week_cache.get(str(start_date)+'-'+str(end_date))
+        week_key = str(start_date)+'-'+str(end_date)
+        week = self.week_cache.get(week_key)
         #Se é a semana atual deve atualizar independente pra manter coerente com possiveis ajustes direto no redmine
         is_current_week = (start_date <= date.today() <= end_date)
-        #Atualiza somente quando abre o app (self.updated_today)
-        if week is not None and not is_current_week and not self.updated_today:
+        #Semanas passadas: consulta o Redmine uma vez por execução do app; depois usa o cache (ou force=True)
+        if week is not None and not is_current_week and not force and week_key in self.weeks_updated:
             print('Achou no cache')
-            self.updated_today = True
             return week
 
         time_entries = self.redmine.time_entry.filter(
@@ -142,8 +173,12 @@ class RedManager:
         if assigned_task and not working_tasks_days_times.get(assigned_task):
             working_tasks_days_times[assigned_task] = {}
         
+        #Atualiza descrição/status das tarefas da semana (o cache de tarefas guardava o status antigo)
+        self.refresh_tasks(list(working_tasks_days_times.keys()))
+
         #salva no cache
-        self.week_cache[str(start_date)+'-'+str(end_date)] = working_tasks_days_times
+        self.week_cache[week_key] = working_tasks_days_times
+        self.weeks_updated.add(week_key)
         return working_tasks_days_times
 
     def register_time_entry(self, task_id, hours, description, activity_id):

@@ -1,0 +1,12 @@
+# Dados locais (cache de tarefas e chave de API cifrada) - nunca versionar
+*.pkl
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/

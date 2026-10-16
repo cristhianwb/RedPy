@@ -29,8 +29,9 @@ class TrayIcon:
         img = Image.open(icon_path)
         
         # Criar menu de contexto
+        # default=True: clique simples no ícone abre a janela
         menu = pystray.Menu(
-            pystray.MenuItem("Mostrar", self._toggle_window),
+            pystray.MenuItem("Mostrar", self._show_window, default=True),
             pystray.MenuItem("Ocultar", self._hide_window),
             pystray.MenuItem("Sair", self._quit_app)
         )
@@ -45,14 +46,20 @@ class TrayIcon:
             self._show_window()
     
     def _show_window(self, icon=None, item=None):
-        """Mostra a janela principal."""
+        """Mostra a janela principal (agendado na thread do Tkinter)."""
+        self.root.after(0, self._do_show_window)
+
+    def _do_show_window(self):
         self.root.deiconify()
         self.root.lift()
-        self.root.focus()
+        self.root.focus_force()
         self.is_visible = True
-    
+
     def _hide_window(self, icon=None, item=None):
-        """Oculta a janela para a bandeja."""
+        """Oculta a janela para a bandeja (agendado na thread do Tkinter)."""
+        self.root.after(0, self._do_hide_window)
+
+    def _do_hide_window(self):
         self.root.withdraw()
         self.is_visible = False
     

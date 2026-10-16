@@ -1,0 +1,1 @@
+python -m PyInstaller --icon="icon\relogio.ico" --onefile --noconsole --add-data "icon\relogio.ico;." main.py

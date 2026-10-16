@@ -4,7 +4,9 @@ Aplicativo desktop para Windows que mostra, em um quadro semanal, as horas lanç
 
 ## Funcionalidades
 
-- **Quadro semanal** (segunda a domingo) com as horas lançadas por tarefa e por dia. Use os botões *◀ Semana Anterior* e *Próxima Semana ▶* para navegar.
+- **Quadro semanal** (segunda a domingo) com as horas lançadas por tarefa e por dia, e uma linha **Total do dia** no final. Use os botões *◀ Semana Anterior* e *Próxima Semana ▶* para navegar. A tabela tem barra de rolagem e aceita a roda do mouse.
+- **Cabeçalho** com o nome do usuário do Redmine, o total de horas lançadas no mês atual e o botão **⟳ Atualizar**, que consulta o Redmine de novo ignorando o cache.
+- **Sem conexão/VPN**: o quadro mostra os dados do cache e um aviso no cabeçalho.
 - **Tarefa atribuída**: a tarefa atribuída a você com status `DEV • Exec...` aparece no quadro mesmo sem horas lançadas na semana.
 - **Cronômetro por tarefa** na coluna do dia atual:
   - `▶` inicia a contagem. Se outra tarefa estiver rodando, ela é pausada antes.
@@ -12,8 +14,8 @@ Aplicativo desktop para Windows que mostra, em um quadro semanal, as horas lanç
   - `❌` zera o tempo contado localmente.
   - `⏱` abre o diálogo de registro: você revisa o tempo (HH:MM:SS), escolhe a atividade e escreve a descrição. O lançamento é criado no Redmine.
 - **Pausa automática** quando a sessão do Windows é bloqueada. A tarefa volta a contar no desbloqueio.
-- **Ícone na bandeja do sistema** com as opções Mostrar, Ocultar e Sair. O botão *🔽 Minimizar* manda a janela para a bandeja.
-- **Cache local** (`tasks.pkl`) das tarefas, das semanas consultadas e do cronômetro em andamento. A semana atual é sempre consultada de novo no Redmine.
+- **Ícone na bandeja do sistema**: um clique abre a janela. O menu tem Mostrar, Ocultar e Sair. O botão *🔽 Minimizar* manda a janela para a bandeja.
+- **Cache local** (`tasks.pkl`) das tarefas, das semanas consultadas e do cronômetro em andamento. A semana atual é consultada no Redmine sempre que o quadro é carregado. Semanas passadas são consultadas uma vez por execução do app; depois disso, só pelo botão Atualizar. O status das tarefas é atualizado junto com a semana.
 
 ## Requisitos
 
