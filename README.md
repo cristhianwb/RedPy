@@ -2,6 +2,10 @@
 
 Aplicativo desktop para Windows que mostra, em um quadro semanal, as horas lançadas no Redmine por tarefa. Ele também cronometra o trabalho do dia e registra o tempo direto no Redmine.
 
+![Tela principal do RedPy: quadro semanal com horas por tarefa, cronômetro na coluna do dia e total por dia](docs/screenshot.png)
+
+<sub>Print com dados fictícios de demonstração.</sub>
+
 ## Funcionalidades
 
 - **Quadro semanal** (segunda a domingo) com as horas lançadas por tarefa e por dia, e uma linha **Total do dia** no final. Use os botões *◀ Semana Anterior* e *Próxima Semana ▶* para navegar. A tabela tem barra de rolagem e aceita a roda do mouse.
